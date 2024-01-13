@@ -40,7 +40,7 @@ def download_image(url, folder='images/'):
     with open(filepath, 'wb') as file:
         file.write(response.content)
     return filepath
-
+from itertools import islice
 
 for book_id in range(7, 11):
     text_url = f'https://tululu.org/txt.php?id={book_id}'
@@ -64,12 +64,17 @@ for book_id in range(7, 11):
             [comment.get_text().split(')', 1)[1].strip()
              for comment in page_comments])
         print(comments_text)
-        # print(book_title)
+        print(book_title)
         image_path = soup.find('body').find('table').find(
             'div', class_='bookimage').find('img')['src']
         image_url = urljoin('https://tululu.org/', image_path)
+        book_genres = soup.find('body').find('table').find(
+            'span', class_='d_book').find_all('a')
+        genres = ([genre.get_text() for genre in book_genres])
+        print(genres)
+        
         # print(image_url)
         # download_image(image_url)
-        # download_txt(text_url, book_title)
+        download_txt(text_url, book_title)
     except requests.HTTPError:
         print(f'HTTPError: {text_response.history}')

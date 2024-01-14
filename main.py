@@ -1,11 +1,11 @@
+import argparse
 import os
+from pathlib import Path
+from urllib.parse import unquote, urljoin, urlsplit
 
 import requests
-from pathlib import Path
-from pathvalidate import sanitize_filename
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-from urllib.parse import urlsplit, unquote
+from pathvalidate import sanitize_filename
 
 
 def check_for_redirect(response):
@@ -33,8 +33,6 @@ def download_image(url, folder='images/'):
     response.raise_for_status()
     parsed_url = urlsplit(url)
     decoded_filename = unquote(parsed_url.path.split('/')[-1])
-    # print(path)
-    # print(decoded_filename)
     filepath = os.path.join(path, decoded_filename)
 
     with open(filepath, 'wb') as file:
@@ -62,24 +60,30 @@ def parse_book_page(soup):
     book_genres = soup.find('body').find('table').find(
         'span', class_='d_book').find_all('a')
     genre = ([genre.get_text() for genre in book_genres])
-    # print(author)
-    # print(book_title)
-    # print(genre)
-    # print(image_url)
-    # print(comments_text)
-    # print('\n')
     book_page = {'author': author,
                  'book_title': book_title,
                  'comments_text': comments_text,
                  'image_url': image_url,
                  'genre': genre
-    }
+                 }
 
     return book_page
 
 
 def main():
-    for book_id in range(9, 11):
+    parser = argparse.ArgumentParser(
+        description='Download books from a range of IDs.')
+    parser.add_argument('start_id',
+                        type=int,
+                        default=1,
+                        help='Start book ID')
+    parser.add_argument('end_id',
+                        type=int,
+                        default=10,
+                        help='End book ID')
+    args = parser.parse_args()
+
+    for book_id in range(args.start_id, args.end_id + 1):
         text_url = f'https://tululu.org/txt.php?id={book_id}'
         book_page_url = f'https://tululu.org/b{book_id}/'
         text_response = requests.get(text_url)
@@ -90,7 +94,6 @@ def main():
             check_for_redirect(text_response)
             soup = BeautifulSoup(book_response.text, 'lxml')
             parsed_book = parse_book_page(soup)
-            print(parsed_book)
             download_image(parsed_book['image_url'])
             download_txt(text_url, parsed_book['book_title'])
         except requests.HTTPError:

@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -9,15 +10,18 @@ from pathvalidate import sanitize_filename
 
 
 def check_for_redirect(response):
-    if any(res.status_code == 302 for res in response.history):
-        raise requests.HTTPError
+    if response.history:
+        print(f'HTTPError: {response.history}')
+        raise requests.exceptions.HTTPError
 
 
-def download_txt(url, filename, folder='books/'):
+def download_txt(url, filename, book_id, folder='books/'):
     path = Path(folder)
     path.mkdir(parents=True, exist_ok=True)
-    response = requests.get(url)
+    params = {'id': book_id}
+    response = requests.get(url, params=params)
     response.raise_for_status()
+    check_for_redirect(response)
 
     filepath = os.path.join(path, f'{sanitize_filename(filename)}.txt')
 
@@ -40,32 +44,30 @@ def download_image(url, folder='images/'):
     return filepath
 
 
-def parse_book_page(soup):
-    book_page = {}
-    page_title = soup.find('body').find('table').find(
-        'td', class_='ow_px_td').find('div').find('h1')
+def parse_book_page(soup, base_url):
+    page_title = soup.find('td', class_='ow_px_td').find('h1')
     page_title_text = page_title.text
     page_title_splited_text = page_title_text.split('::')
-    book_title = page_title_splited_text[0].strip()
-    author = page_title_splited_text[1].strip()
-    page_comments = soup.find('body').find('table').find(
-        'td', class_='ow_px_td').find_all('div', class_='texts')
+    book_title, author = map(str.strip, page_title_splited_text[:2])
+
+    page_comments = soup.find_all('div', class_='texts')
     comments_text = '; '.join(
         [comment.get_text().split(')', 1)[1].strip()
             for comment in page_comments])
-    image_path = soup.find('body').find('table').find(
-        'div', class_='bookimage').find('img')['src']
-    image_url = urljoin('https://tululu.org/', image_path)
 
-    book_genres = soup.find('body').find('table').find(
-        'span', class_='d_book').find_all('a')
-    genre = ([genre.get_text() for genre in book_genres])
-    book_page = {'author': author,
-                 'book_title': book_title,
-                 'comments_text': comments_text,
-                 'image_url': image_url,
-                 'genre': genre
-                 }
+    image_path = soup.find('div', class_='bookimage').find('img')['src']
+    image_url = urljoin(base_url, image_path)
+
+    book_genres = soup.find('span', class_='d_book').find_all('a')
+    parsed_book_genres = ([genre.get_text() for genre in book_genres])
+
+    book_page = {
+        'author': author,
+        'book_title': book_title,
+        'comments_text': comments_text,
+        'image_url': image_url,
+        'genre': parsed_book_genres
+    }
 
     return book_page
 
@@ -83,21 +85,28 @@ def main():
                         help='End book ID')
     args = parser.parse_args()
 
+    first_retry = True
+
     for book_id in range(args.start_id, args.end_id + 1):
-        text_url = f'https://tululu.org/txt.php?id={book_id}'
+        text_url = 'https://tululu.org/txt.php'
         book_page_url = f'https://tululu.org/b{book_id}/'
-        text_response = requests.get(text_url)
-        text_response.raise_for_status()
         book_response = requests.get(book_page_url)
         book_response.raise_for_status()
         try:
-            check_for_redirect(text_response)
+            check_for_redirect(book_response)
             soup = BeautifulSoup(book_response.text, 'lxml')
-            parsed_book = parse_book_page(soup)
+            parsed_book = parse_book_page(soup, book_page_url)
             download_image(parsed_book['image_url'])
-            download_txt(text_url, parsed_book['book_title'])
-        except requests.HTTPError:
-            print(f'HTTPError: {text_response.history}')
+            download_txt(text_url, parsed_book['book_title'], book_id)
+        except requests.exceptions.HTTPError:
+            continue
+        except requests.exceptions.ConnectionError as connectionerror:
+            print(connectionerror)
+            if first_retry:
+                time.sleep(3)
+            first_retry = False
+            time.sleep(10)
+            continue
 
 
 if __name__ == '__main__':

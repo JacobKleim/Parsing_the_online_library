@@ -7,6 +7,13 @@ from urllib.parse import unquote, urljoin, urlsplit
 import requests
 from bs4 import BeautifulSoup
 from pathvalidate import sanitize_filename
+import logging
+
+
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 
 def check_for_redirect(response):
@@ -90,18 +97,19 @@ def main():
     for book_id in range(args.start_id, args.end_id + 1):
         text_url = 'https://tululu.org/txt.php'
         book_page_url = f'https://tululu.org/b{book_id}/'
-        book_response = requests.get(book_page_url)
-        book_response.raise_for_status()
         try:
+            book_response = requests.get(book_page_url)
+            book_response.raise_for_status()
             check_for_redirect(book_response)
             soup = BeautifulSoup(book_response.text, 'lxml')
             parsed_book = parse_book_page(soup, book_page_url)
             download_image(parsed_book['image_url'])
             download_txt(text_url, parsed_book['book_title'], book_id)
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as http_error:
+            logging.error(f'HTTPError: {http_error}')
             continue
-        except requests.exceptions.ConnectionError as connectionerror:
-            print(connectionerror)
+        except requests.exceptions.ConnectionError as connection_error:
+            print(connection_error)
             if first_retry:
                 time.sleep(3)
             first_retry = False

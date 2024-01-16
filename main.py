@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import time
 from pathlib import Path
@@ -7,8 +8,6 @@ from urllib.parse import unquote, urljoin, urlsplit
 import requests
 from bs4 import BeautifulSoup
 from pathvalidate import sanitize_filename
-import logging
-
 
 logging.basicConfig(
     level=logging.ERROR,
